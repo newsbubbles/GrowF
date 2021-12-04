@@ -1,4 +1,11 @@
-# Ki: NFTree... Growf? ... author: Nathaniel D. Gibson
+# GrowF: Grow Function
+# Original Author: Nathaniel D. Gibson
+# Copyright 2021 Solana Wallet: 2VEvjzNYHG56fJHNcUPnMTpi1cuRTipqgu78YNtZhnAK
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+# The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 
 import bpy
 import bmesh
@@ -7,6 +14,15 @@ import math
 import random
 
 _Z = mathutils.Vector((0.0, 0.0, 1.0))
+
+class DNA():
+    def __init__(self, namespace, data):
+        self.namespace = namespace  # Having a namespace allows different random seeds based on names
+                                    # should have the effect of chanigng all random phenomena so that
+                                    # the same DNA creates the same exact organism, only slightly different
+                                    # because randomness in the growth process can have great effects on outcome
+                                    # Think of it like a multiverse space of infinite multiverses in which same DNA, different outcome
+        self.data = data
 
 def rot_q(v):
     return _Z.rotation_difference(v.normalized())
@@ -48,10 +64,17 @@ class Cell():
     def grow(self):
         
         self.move_random(flat=False)
-        self.grow_out()
+        self.grow_radial()
         self.move_boids()
         #self.move_rest()
         
+        self.growth_counters()
+        
+    def grow_radial(self):
+        v = self.origv * (1 / (self.age + 1))
+        self.nv = v * self.rate_growth_radial
+        
+    def growth_counters(self):
         self.nloc = self.loc + self.nv
         self.age += 1
 
@@ -73,6 +96,14 @@ class Cell():
             v = (self.loc + self.origin) / 2
             e = v - self.loc
             self.nv = self.nv + (e * ratio)
+            
+    def move_away(self, point, limit=0):
+        # point should be a tuple of 3 floats (x, y, z)
+        v = point # mathutils.Vector(point)
+        a = v - self.loc
+        if limit == 0 or a < limit:
+            n = a * self.ease_away
+            self.nv = self.nv + n
         
     def move_boids(self):
         rn = 1 / len(self.neighbors)
@@ -81,16 +112,18 @@ class Cell():
             al = al + n.loc
             av = av + n.v
             #self.nv = self.nv + (-n.loc * self.ease_away)
+            self.move_away(n.loc)
         al = al * rn
         av = av * rn
         ad = al - self.loc
         sr = 0.1
         self.nv = self.nv + (av * self.ease)
-        
-    def grow_out(self):
-        v = self.origv * (1 / (self.age + 1))
-        self.nv = v * self.rate_growth_radial
-    
+
+    # Cell interactions        
+
+    def give(self, other, hormone, volume_ratio):
+        return None
+
 
 class Slice():
     def __init__(self, neighbors, start_radius=1, detail_depth=0.1, center=mathutils.Vector((0.0, 0.0, 0.0)), normal=mathutils.Vector((0.0, 0.0, 1.0))):
@@ -138,7 +171,7 @@ class Slice():
 
 
 class Tip():
-    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.3, hormones=[], data={}, bifurcation=(4, 3, 0.5, 0.618, 0.4, 0.8), cell_res=8, start_at_0=True):
+    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.3, hormones=[], data={}, bifurcation=(4, 3, 0.5, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8, start_at_0=True):
         
         # Initial configuration (can be changed by factors that affect the tip)
         self.parent = branch
@@ -150,8 +183,11 @@ class Tip():
         self.bifurc_sr = bifurcation[3] # initial speed ratio for bifurcated children
         self.bifurc_inclination = bifurcation[4]
         self.bifurc_radius_ratio = bifurcation[5]
+        self.bifurc_stop = bifurcation[6]
+        self.stop_age = bifurcation[7]   # if set > 0, it will make the branch stop growing after this age
+        self.max_generation = bifurcation[8]    # Number of bifurcation generations allowed in all tips
         self.speed = speed
-        self.speed_decay = 0.98 # ratio of decay of growth speed per growth
+        self.speed_decay = 0.98     # ratio of decay of growth speed per growth
         self.data = data
         self.hormones = hormones    # hormones are dropped as a total of what is available
         
@@ -166,7 +202,9 @@ class Tip():
         self.loc = mathutils.Vector(loc)
         self.last_loc = None
         self.phase = 0.0
+        self.generation = 0
         self.age = 0
+        self.bifurc_count = 0
         
         # direction of gravity and direction of light are unit vectors that point toward gravity and toward the brightest light
         self.light_axis = mathutils.Vector((0.5, 0.5, 1.0))
@@ -196,42 +234,60 @@ class Tip():
     def update_q(self):
         rq = rot_q(self.direction)
         return rq
+    
+    def can_grow(self):
+        return self.stop_age == 0 or self.age < self.stop_age - 1
+    
+    def can_bifurcate(self):
+        counter = self.bifurc_stop == 0 or self.bifurc_count < self.bifurc_stop
+        gen = self.max_generation == 0 or self.generation < self.max_generation
+        return counter and gen
 
     # Actions
     
     def photolocate(self, strength=0.04):
+        if not self.can_grow():
+            return False
         #negage = 1.0 if self.age == 0 else 1.0 / self.age
         #self.direction = self.direction + (self.light_axis * strength * negage)
         self.direction = self.direction.lerp(self.light_axis, strength)
+        return True
         
     def geolocate(self, strength=0.02):
+        if not self.can_grow():
+            return False
         #negage = 1.0 if self.age == 0 else 1.0 / self.age
         #self.direction = self.direction + (self.gravity_axis * strength * negage)
         self.direction = self.direction.lerp(-self.gravity_axis, strength)
+        return True
             
     def grow(self):
         # Replace with NN
 
-        # cheating without using hormones to control direction
-        self.photolocate()
-        self.geolocate()
-
-        self.last_loc = self.loc
-        self.loc = self.loc + (self.direction * self.speed)
-        self.rq = self.update_q()
-        
-        # Lay down slice
-        self.cur_slice = self.branch.append(Slice(self.cell_res, start_radius=self.start_radius, center=self.loc, normal=self.direction))
+        # Always grow branch first
         for slice in self.branch:
             slice.grow()
+
+        if self.can_grow():
+            # cheating without using hormones to control direction
+            self.photolocate()
+            self.geolocate()
+    
+            self.last_loc = self.loc
+            self.loc = self.loc + (self.direction * self.speed)
+            self.rq = self.update_q()
+            
+            # Lay down slice
+            self.cur_slice = self.branch.append(Slice(self.cell_res, start_radius=self.start_radius, center=self.loc, normal=self.direction))
+            self.speed *= self.speed_decay
         
         self.age += 1
-        self.speed *= self.speed_decay
         return self.bifurcate()
 
     def bifurcate(self):
-        if self.age % self.bifurc_period == 0:
+        if self.age % self.bifurc_period == 0 and self.can_bifurcate():
             vects = self.bifurcate_dir()
+            self.bifurc_count += 1
             return vects
         else:
             return None
@@ -259,7 +315,7 @@ class Tip():
         return o
         
 class Shoot(Tip):
-    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.45, hormones=[], data={}, bifurcation=(4, 2, 0.33, 0.618, 0.4, 0.8), cell_res=8):
+    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.45, hormones=[], data={}, bifurcation=(4, 2, 0.33, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8):
         super().__init__(branch, loc, dir=dir, speed=speed, hormones=hormones, data=data, bifurcation=bifurcation, cell_res=cell_res)
         # Shoots are positively phototropic (towards the light), negatively geotropic (away from gravity)
         # Shoots react to certain hormones in different ways (auxins are what cause the above)
@@ -273,7 +329,7 @@ class Shoot(Tip):
         # causing the cells to grow faster in the growth direction
         
 class Root(Tip):
-    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.3, hormones=[], data={}, bifurcation=(4, 3, 0.5, 0.618, 0.4, 0.8), cell_res=8):
+    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.3, hormones=[], data={}, bifurcation=(4, 3, 0.5, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8):
         super().__init__(branch, loc, dir=dir, speed=speed, hormones=hormones, data=data, bifurcation=bifurcation, cell_res=cell_res)
         # Roots are negatively phototropic and positively geotropic
         
@@ -298,6 +354,17 @@ class Hormone():
         self.type = type
         self.volume = volume
         self.makeup = makeup
+        
+    # Uses some volume of the hormone 
+    def use(self, volume):
+        o = self.volume
+        v = self.volume - volume
+        if v < 0:
+            self.volume -= o
+            return o
+        else:
+            self.volume -= volume
+            return volume
         
 class Auxin(Hormone):
     
@@ -358,6 +425,28 @@ class Ethylene(Hormone):
     
     def __init__(self, volume):
         super().__init__(Hormone.ETHYLENE, volume)
+
+
+# Tree Class
+  
+class Tree():
+    def __init__(self, dna, age=0, name="Tree", seed_r="GrowF"):
+        self.name = name
+        self.dna = dna
+        self.age = age
+        self.random_seed = seed_r
+        self.tips = []
+        
+    # Seed Construction and Pre-Seed functions
+    
+    def add_tip(self, tip):
+        tip.dna = self.dna
+        self.tips.append(tip)
+        
+    # Actions
+    
+    def plant(self, location=(0.0, 0.0, 0.0)):
+        return None
         
 
 # Main functions
@@ -390,15 +479,17 @@ def make_mesh(name):
     bm.from_mesh(m)
     return o, m, bm
 
-def make(name, age=48):
+def make(name, age=39):
     # Goal ... create a growth matrix of cells 
     # Decouple the actual mesh making part from growth (helps with being able to calculate mesh from history)
     # A branch is a tip's location history stored as a Slice which consists of Cells
     o, m, bm = make_mesh(name)
 
-    bifurc = (8, 1, 0.55, 0.718, 0.5, 0.3)
+    # Set the random seed, can be set also by the GA
     random.seed(a='NFTree', version=2)
-    cell_res = 4
+
+    bifurc = (3, 2, 0.55, 0.718, 0.5, 0.3, 3, 12, 4)
+    cell_res = 24
     dir_init = mathutils.Vector((0.0, 0.0, 1.0))
     
     u1 = Shoot(None, (0.0, 0.0, 0.0), dir=dir_init.normalized(), bifurcation=bifurc, cell_res=cell_res)
@@ -420,6 +511,8 @@ def make(name, age=48):
                     dir = e - t.loc
                     nt = Shoot(t, tuple(t.last_loc), dir=dir.normalized(), speed=t.speed * t.bifurc_sr, bifurcation=bifurc, cell_res=cell_res)
                     nt.phase = t.phase
+                    nt.generation = t.generation + 1
+                    nt.max_generation = t.max_generation
                     nt.cache_vertex = nv
                     tips.append(nt)
     
@@ -442,10 +535,11 @@ def make(name, age=48):
                     vv = vert if i == 0 else verts[0] if i == lsc else verts[-1]
                     # Vertices for adding faces and the like
                     if si > 0 and i > 0:
+                        pv = prevvert[i-1] if i < lsc else prevvert[0]
                         f = (
                             vert,
                             vv,
-                            prevvert[i-1],
+                            pv,
                             prevvert[i],
                         )
                         bm.faces.new(f)
