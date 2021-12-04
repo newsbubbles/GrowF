@@ -7,6 +7,8 @@ TLDR; High Def Living Trees that you can breed, trim and mint as NFTs on Solana,
 
 Written in Python using the Blender Library
 
+Current state of development https://www.youtube.com/watch?v=BUarQzuhj1c
+
 ## The Metaverse Needs Trees
 
 ## We Have the Technology
