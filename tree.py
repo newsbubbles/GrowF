@@ -15,6 +15,24 @@ import random
 
 _Z = mathutils.Vector((0.0, 0.0, 1.0))
 
+class Param():
+    def __init__(self, value, vmin=None, vmax=None, func=None, steps=None):
+        self.value = value
+        self.min = vmin
+        self.max = vmax
+        self.func = func
+        self.steps = steps
+        
+    def next(self):
+        self.value = self.func(self.value, self.min, self.max)
+        return self.value
+    
+def p_random(value, vmin, vmax):
+    return random.random() * (vmax - vmin) + vmin
+
+def p_random_int(value, vmin, vmax):
+    return round(p_random(value, vmin, vmax))
+
 class DNA():
     def __init__(self, namespace, data):
         self.namespace = namespace  # Having a namespace allows different random seeds based on names
@@ -35,17 +53,19 @@ class Cell():
         self.center = center
         self.origin = mathutils.Vector((x, y, z))
         self.origv = None if self.center is None else self.origin - self.center
-        self.maxdev = 1
+        
         self.loc = mathutils.Vector((x, y, z))
         self.v = mathutils.Vector((0.0, 0.0, 0.0))
         self.nloc = self.loc
         self.nv = self.v
+        
+        self.maxdev = 1
         self.mindist = 0.001
         self.ease = 0.4
         self.ease_away = 0.01
         self.age = 0
         self.color = mathutils.Color((0.3, 1.0, 0.2))
-        self.rate_growth_radial = 1.0
+        self.rate_growth_radial = 5.0
         self.targets = [] # Can be turned into a way to react to target objects
         self.neighbors = []
         self.hormones = []
@@ -126,13 +146,14 @@ class Cell():
 
 
 class Slice():
-    def __init__(self, neighbors, start_radius=1, detail_depth=0.1, center=mathutils.Vector((0.0, 0.0, 0.0)), normal=mathutils.Vector((0.0, 0.0, 1.0))):
+    def __init__(self, neighbors, start_radius=1, detail_depth=0.1, center=mathutils.Vector((0.0, 0.0, 0.0)), normal=mathutils.Vector((0.0, 0.0, 1.0)), proto_cell=None):
         self.neighbors = neighbors
         self.center = center
         self.orientation = normal
         self.rot_matrix = rot_q(self.orientation)
         self.radius = start_radius
         self.ddepth = detail_depth / 2
+        self.proto_cell = proto_cell
         self.cells = []
         
         self.init_circular()
@@ -171,7 +192,7 @@ class Slice():
 
 
 class Tip():
-    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.3, hormones=[], data={}, bifurcation=(4, 3, 0.5, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8, start_at_0=True):
+    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.3, hormones=[], data={}, bifurcation=(4, 3, 0.5, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8, start_at_0=True, proto_cell=None):
         
         # Initial configuration (can be changed by factors that affect the tip)
         self.parent = branch
@@ -187,7 +208,7 @@ class Tip():
         self.stop_age = bifurcation[7]   # if set > 0, it will make the branch stop growing after this age
         self.max_generation = bifurcation[8]    # Number of bifurcation generations allowed in all tips
         self.speed = speed
-        self.speed_decay = 0.98     # ratio of decay of growth speed per growth
+        self.speed_decay = Param(0.98, vmin=0.818, vmax=1.16, func=p_random)     # ratio of decay of growth speed per growth
         self.data = data
         self.hormones = hormones    # hormones are dropped as a total of what is available
         
@@ -198,6 +219,7 @@ class Tip():
         self.cur_slice = None
 
         # Working parameters (counters, history, etc)
+        self.proto_cell = proto_cell
         self.cache_vertex = None
         self.loc = mathutils.Vector(loc)
         self.last_loc = None
@@ -229,7 +251,7 @@ class Tip():
         #  since the tip only drops a growing surface cell, it will be included as a neighbor to the cells dropped by the tip's parent branch
         
     def start(self):
-        self.cur_slice = self.branch.append(Slice(self.cell_res, start_radius=self.start_radius, center=self.loc, normal=self.direction))    
+        self.cur_slice = self.branch.append(Slice(self.cell_res, start_radius=self.start_radius, center=self.loc, normal=self.direction, proto_cell=self.proto_cell))
     
     def update_q(self):
         rq = rot_q(self.direction)
@@ -278,8 +300,8 @@ class Tip():
             self.rq = self.update_q()
             
             # Lay down slice
-            self.cur_slice = self.branch.append(Slice(self.cell_res, start_radius=self.start_radius, center=self.loc, normal=self.direction))
-            self.speed *= self.speed_decay
+            self.cur_slice = self.branch.append(Slice(self.cell_res, start_radius=self.start_radius, center=self.loc, normal=self.direction, proto_cell=self.proto_cell))
+            self.speed *= self.speed_decay.next()
         
         self.age += 1
         return self.bifurcate()
@@ -315,8 +337,8 @@ class Tip():
         return o
         
 class Shoot(Tip):
-    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.45, hormones=[], data={}, bifurcation=(4, 2, 0.33, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8):
-        super().__init__(branch, loc, dir=dir, speed=speed, hormones=hormones, data=data, bifurcation=bifurcation, cell_res=cell_res)
+    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.45, hormones=[], data={}, bifurcation=(4, 2, 0.33, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8, start_at_0=True, proto_cell=None):
+        super().__init__(branch, loc, dir=dir, speed=speed, hormones=hormones, data=data, bifurcation=bifurcation, cell_res=cell_res, start_at_0=start_at_0, proto_cell=proto_cell)
         # Shoots are positively phototropic (towards the light), negatively geotropic (away from gravity)
         # Shoots react to certain hormones in different ways (auxins are what cause the above)
         # ie: in the cells dropped, the auxins accumulate on a shaded side
@@ -329,8 +351,8 @@ class Shoot(Tip):
         # causing the cells to grow faster in the growth direction
         
 class Root(Tip):
-    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.3, hormones=[], data={}, bifurcation=(4, 3, 0.5, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8):
-        super().__init__(branch, loc, dir=dir, speed=speed, hormones=hormones, data=data, bifurcation=bifurcation, cell_res=cell_res)
+    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.3, hormones=[], data={}, bifurcation=(4, 3, 0.5, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8, start_at_0=True, proto_cell=None):
+        super().__init__(branch, loc, dir=dir, speed=speed, hormones=hormones, data=data, bifurcation=bifurcation, cell_res=cell_res, start_at_0=start_at_0, proto_cell=proto_cell)
         # Roots are negatively phototropic and positively geotropic
         
 
@@ -479,7 +501,7 @@ def make_mesh(name):
     bm.from_mesh(m)
     return o, m, bm
 
-def make(name, age=39):
+def make(name, age=58):
     # Goal ... create a growth matrix of cells 
     # Decouple the actual mesh making part from growth (helps with being able to calculate mesh from history)
     # A branch is a tip's location history stored as a Slice which consists of Cells
@@ -488,7 +510,7 @@ def make(name, age=39):
     # Set the random seed, can be set also by the GA
     random.seed(a='NFTree', version=2)
 
-    bifurc = (3, 2, 0.55, 0.718, 0.5, 0.3, 3, 12, 4)
+    bifurc = (8, 1, 0.15, 0.718, 0.5, 0.3, 8, 0, 4)
     cell_res = 24
     dir_init = mathutils.Vector((0.0, 0.0, 1.0))
     
