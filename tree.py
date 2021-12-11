@@ -210,7 +210,7 @@ class Slice():
         self.orientation = normal
         self.rot_matrix = rot_q(self.orientation)
         self.radius = start_radius
-        self.rate_growth_radial = Param(1.0, vmin=1.0, vmax=10.0, func=p_random) if rate_growth_radial is None else rate_growth_radial
+        self.rate_growth_radial = Param(1.0) if rate_growth_radial is None else rate_growth_radial
         self.rate_ease_radial = Param(0.1) if dna is None else dna.get("slice")[5].copy()
         self.rate_ease_away = Param(0.01) if dna is None else dna.get("slice")[6].copy()
         self.mult_growth_radial = mult_growth_radial
@@ -707,15 +707,15 @@ class Tree():
             Param(0.04, vmin=-0.2, vmax=0.2, func=p_none, freq=10),  # photolocate ratio
             Param(0.02, vmin=0.02, vmax=0.02, func=p_none, freq=10) # geolocate_ratio
         ))
-        #(x scale, y scale, x growth matrix, y growth matrix, growth rate all, rate ease radial, rate ease away)
+        #(x scale, y scale, x growth coefficient, y growth coefficient, growth rate all, rate ease radial, rate ease away)
         start_radius = self.dna.put("slice", (
-            Param(0.01, vmin=0.005, vmax=0.05, func=[p_square,p_none], freq=100),
-            Param(0.01, vmin=0.005, vmax=0.05, func=p_square_y, freq=3),
-            Param(1.0,  vmin=1.0, vmax=5.0, func=p_square, freq=100),
-            Param(1.0,  vmin=1.0, vmax=5.0, func=p_square_y, freq=100),
-            Param(1.0, vmin=1.0, vmax=2.0, func=p_none, freq=100),
-            Param(1.0, vmin=0.1, vmax=2.0, func=p_none, freq=0.5),
-            Param(1.0, vmin=0.1, vmax=2.0, func=p_none, freq=0.5)
+            Param(0.01, vmin=0.005, vmax=0.05, func=[p_square,p_none], freq=100),   # x scale (initial radial placement around tip)
+            Param(0.01, vmin=0.005, vmax=0.05, func=p_square_y, freq=3),            # y scale
+            Param(1.0,  vmin=1.0, vmax=5.0, func=p_square, freq=100),               # x growth coefficient
+            Param(1.0,  vmin=1.0, vmax=5.0, func=p_square_y, freq=100),             # y growth coefficient
+            Param(1.0, vmin=1.0, vmax=2.0, func=p_none, freq=100),                  # growth rate all
+            Param(1.0, vmin=0.1, vmax=2.0, func=p_none, freq=0.5),                  # ease rate: radial growth
+            Param(1.0, vmin=0.1, vmax=2.0, func=p_none, freq=0.5)                   # ease rate: away from neighbors
         ))
         # cell growth, cell resolution, minimum neighbor distance, cell "toward" movement ease, cell ease for "away"
         cell = self.dna.put("cell", (
