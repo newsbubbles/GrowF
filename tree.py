@@ -1,5 +1,6 @@
 # GrowF: Grow Function
 # Original Author: Nathaniel D. Gibson
+
 # Copyright 2021 Solana Wallet: 2VEvjzNYHG56fJHNcUPnMTpi1cuRTipqgu78YNtZhnAK
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -12,33 +13,59 @@ import bmesh
 import mathutils
 import math
 import random
+import types
 
-_Z = mathutils.Vector((0.0, 0.0, 1.0))
+_Z = mathutils.Vector((0.0, 0.0, 1.0)) # Eventually will be moved, just a way to know which way is the template normal
+
+# Change the below variable to False if you want to only model the branching structure of your organism
 _params_live = True
 
+# Param is the basic unit of growth instruction, it uses any infinite wave function(s) to define step-increments of value, along with limits of that value
 class Param():
-    def __init__(self, value, vmin=None, vmax=None, func=None, steps=None, freq=1.0):
+    def __init__(self, value, vmin=None, vmax=None, func=None, steps=None, freq=1.0, sequence=None):
         self.value = value
         self.orig = value
         self.min = vmin
         self.max = vmax
         self.func = func
         self.steps = steps
-        self.count = 0
         self.freq = freq
+        self.sequence = sequence    # Use sequence for a repeating list
+
+        self.cfunc = 0
+        self.count = 0
+        
+    def next_func(self):
+        lf = len(self.func)
+        f = self.func[self.cfunc]
+        o = f if type(f) != types.FunctionType else f(self)
+        self.cfunc += 1
+        if self.cfunc >= lf:
+            self.cfunc = 0
+        return o
         
     def next(self):
         if not _params_live:
             return self.value
         if self.max is not None:
-            self.value = self.func(self)
+            if type(self.func) == types.FunctionType:
+                self.value = self.func(self)
+            else:
+                self.value = self.next_func()
         self.count += 1
         return self.value
     
     def first(self):
         return self.orig
     
-
+    def copy(self, inherit_count=True):
+        p = Param(self.orig, vmin=self.min, vmax=self.max, func=self.func, steps=self.steps, freq=self.freq, sequence=self.sequence)
+        if inherit_count:
+            p.count = self.count
+            p.cfunc = self.cfunc
+        return p
+    
+# DNA acts like the API for growth parameters, allowing copying, mixing, mutation, and serialization of any parameter space
 class DNA():
     def __init__(self, namespace, data=None):
         self.namespace = namespace  # Having a namespace allows different random seeds based on names
@@ -70,14 +97,16 @@ class DNA():
     def get_copy(self, mutation_rate=0.001):
         return None
 
+# Cell is a representation of collaborative growth and needs to be laid down on a 3D growth lattice like a Slice
 class Cell():
-    def __init__(self, x, y, z=0.0, center=None):
+    def __init__(self, x, y, dna=None, z=0.0, center=None, vector_up=None):
         self.x = x
         self.y = y
         self.z = z
-        self.center = center
-        self.origin = mathutils.Vector((x, y, z))
-        self.origv = None if self.center is None else self.origin - self.center
+        self.center = center                                                    # the center or parent cell's location
+        self.vector_up = vector_up                                              # what this cell knows to be "up" or the opposite of gravity
+        self.origin = mathutils.Vector((x, y, z))                               # the vector representing the origin or starting point at birth
+        self.origv = None if self.center is None else self.origin - self.center # the vector representing original growth orientation
         
         self.loc = mathutils.Vector((x, y, z))
         self.v = mathutils.Vector((0.0, 0.0, 0.0))
@@ -85,9 +114,10 @@ class Cell():
         self.nv = self.v
         
         self.maxdev = 1
-        self.mindist = 0.001
-        self.ease = 0.05
-        self.ease_away = 0.01
+        self.mindist = Param(0.001) if dna is None else dna.get("cell")[2].copy()
+        self.ease = Param(0.05) if dna is None else dna.get("cell")[3].copy()
+        self.ease_away = Param(0.01) if dna is None else dna.get("cell")[4].copy()
+        self.ease2, self.ease_away2 = 1.0, 1.0
         self.age = 0
         self.color = mathutils.Color((0.3, 1.0, 0.2))
         self.rate_growth_radial = 5.0
@@ -107,6 +137,9 @@ class Cell():
         self.neighbors.append(n)
         
     def grow(self):
+        # TODO: Option to make cell behavior completely controlled by evolved NN
+        self.ease.next()
+        self.ease_away.next()
         
         self.move_random(flat=False)
         self.grow_radial()
@@ -147,7 +180,7 @@ class Cell():
         v = point # mathutils.Vector(point)
         a = v - self.loc
         if limit == 0 or a < limit:
-            n = a * self.ease_away
+            n = a * self.ease_away.value * self.ease_away2
             self.nv = self.nv + n
         
     def move_boids(self):
@@ -162,7 +195,7 @@ class Cell():
         av = av * rn
         ad = al - self.loc
         sr = 0.1
-        self.nv = self.nv + (av * self.ease)
+        self.nv = self.nv + (av * self.ease.value * self.ease2)
 
     # Cell interactions        
 
@@ -171,18 +204,18 @@ class Cell():
 
 
 class Slice():
-    def __init__(self, neighbors, start_radius=(1, 1), detail_depth=0.1, center=mathutils.Vector((0.0, 0.0, 0.0)), normal=mathutils.Vector((0.0, 0.0, 1.0)), rate_growth_radial=None, mult_growth_radial=1.0, proto_cell=None):
+    def __init__(self, neighbors, start_radius=(1, 1), detail_depth=0.1, center=mathutils.Vector((0.0, 0.0, 0.0)), normal=mathutils.Vector((0.0, 0.0, 1.0)), rate_growth_radial=None, mult_growth_radial=1.0, dna=None):
         self.neighbors = neighbors
         self.center = center
         self.orientation = normal
         self.rot_matrix = rot_q(self.orientation)
         self.radius = start_radius
         self.rate_growth_radial = Param(1.0, vmin=1.0, vmax=10.0, func=p_random) if rate_growth_radial is None else rate_growth_radial
-        self.rate_ease_radial = Param(0.1, vmin=0.01, vmax=0.2, func=p_sin, freq=0.5)
-        self.rate_ease_away = Param(0.01, vmin=0.001, vmax=0.01, func=p_sin, freq=0.5)
+        self.rate_ease_radial = Param(0.1) if dna is None else dna.get("slice")[5].copy()
+        self.rate_ease_away = Param(0.01) if dna is None else dna.get("slice")[6].copy()
         self.mult_growth_radial = mult_growth_radial
         self.ddepth = detail_depth / 2
-        self.proto_cell = proto_cell
+        self.dna = dna
         self.cells = []
         
         self.init_circular()
@@ -196,10 +229,10 @@ class Slice():
             v = mathutils.Vector((x, y, 0.0))
             v.rotate(self.rot_matrix.normalized())
             v = v + self.center
-            c = Cell(v.x, v.y, z=v.z, center=self.center)
+            c = Cell(v.x, v.y, z=v.z, center=self.center, dna=self.dna)
             c.rate_growth_radial = self.growth_rate(i)
-            c.ease = self.rate_ease_radial.next()
-            c.ease_away = self.rate_ease_away.next()
+            c.ease2 = self.rate_ease_radial.next()
+            c.ease_away2 = self.rate_ease_away.next()
             self.cells.append(c)
             
     def growth_rate(self, index):
@@ -230,36 +263,40 @@ class Slice():
 
 
 class Tip():
-    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.3, hormones=[], data={}, bifurcation=(4, 3, 0.5, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8, start_at_0=True, start_radius=(0.01, 0.01), cell_growth=None, proto_cell=None):
+    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.3, hormones=[], data={}, bifurcation=(4, 3, 0.5, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8, start_at_0=True, start_radius=(0.01, 0.01), cell_growth=None, dna=None):
+        
+        br = dna.get("branch")
         
         # Initial configuration (can be changed by factors that affect the tip)
         self.parent = branch
         self.direction = mathutils.Vector(dir)
         self.rq = self.update_q()
-        self.bifurc_period = bifurcation[0]
-        self.bifurcations = bifurcation[1]
-        self.biphase_offset = bifurcation[2]
-        self.bifurc_sr = bifurcation[3] # initial speed ratio for bifurcated children
-        self.bifurc_inclination = bifurcation[4]
-        self.bifurc_radius_ratio = bifurcation[5]
-        self.bifurc_stop = bifurcation[6]
-        self.stop_age = bifurcation[7]   # if set > 0, it will make the branch stop growing after this age
-        self.max_generation = bifurcation[8]    # Number of bifurcation generations allowed in all tips
-        self.speed = speed
-        self.speed_decay = Param(0.98) #, vmin=0.818, vmax=1.16, func=p_random)     # ratio of decay of growth speed per growth
+        self.bifurc_period = br[0].copy()         # How many growth steps happen between bifurcations/branching
+        self.bifurcations = br[1].copy()          # How many new tips grow out of this
+        self.biphase_offset = br[2].copy()        # The radial offset angle (0.0-1.0) of successive bifurcations
+        self.bifurc_sr = br[3].copy()             # Initial speed ratio for bifurcated child tips
+        self.bifurc_inclination = br[4].copy()    # Inclination of child tips
+        self.bifurc_radius_ratio = br[5].copy()   # The ratio of 
+        self.bifurc_stop = br[6].copy()           # When to stop bifurcations on this branch
+        self.stop_age = br[7].copy()              # if set > 0, it will make the branch stop growing after this age
+        self.max_generation = br[8]               # Number of bifurcation generations allowed in entire organism
+        self.speed = Param(speed) if dna is None else br[9].copy()
+        self.speed_decay = Param(0.98) if dna is None else br[10].copy() #, vmin=0.818, vmax=1.16, func=p_random)     # ratio of decay of growth speed per growth
+        self.photolocate_ratio = Param(0.04) if dna is None else br[11].copy()
+        self.geolocate_ratio = Param(0.02) if dna is None else br[12].copy()
         self.data = data
-        self.hormones = hormones    # hormones are dropped as a total of what is available
+        self.hormones = hormones    # hormones are dropped as a total of what is available        
         
         # Slices and surface cells
         self.start_radius = start_radius
         self.cell_growth_rate = cell_growth
-        self.slice_growth_rate = Param(1.0, vmin=1.0, vmax=2.0, func=p_spike, freq=100)
+        self.slice_growth_rate = Param(2.0) if dna is None else dna.get("slice")[4]
         self.branch = []
         self.cell_res = cell_res
         self.cur_slice = None
 
         # Working parameters (counters, history, etc)
-        self.proto_cell = proto_cell
+        self.dna = dna
         self.cache_vertex = None
         self.loc = mathutils.Vector(loc)
         self.last_loc = self.loc
@@ -302,7 +339,7 @@ class Tip():
             normal = self.direction,
             rate_growth_radial = self.cell_growth_rate,
             mult_growth_radial = self.slice_growth_rate.next(),
-            proto_cell = self.proto_cell
+            dna = self.dna
         ))
     
     def update_q(self):
@@ -310,29 +347,29 @@ class Tip():
         return rq
     
     def can_grow(self):
-        return self.stop_age == 0 or self.age < self.stop_age - 1
+        return self.stop_age.value == 0 or self.age < self.stop_age.value - 1
     
     def can_bifurcate(self):
-        counter = self.bifurc_stop == 0 or self.bifurc_count < self.bifurc_stop
-        gen = self.max_generation == 0 or self.generation < self.max_generation
+        counter = self.bifurc_stop.value == 0 or self.bifurc_count < self.bifurc_stop.value
+        gen = self.max_generation.value == 0 or self.generation < self.max_generation.value
         return counter and gen
 
     # Actions
     
-    def photolocate(self, strength=0.04):
+    def photolocate(self):
         if not self.can_grow():
             return False
         #negage = 1.0 if self.age == 0 else 1.0 / self.age
         #self.direction = self.direction + (self.light_axis * strength * negage)
-        self.direction = self.direction.lerp(self.light_axis, strength)
+        self.direction = self.direction.lerp(self.light_axis, self.photolocate_ratio.next())
         return True
         
-    def geolocate(self, strength=0.02):
+    def geolocate(self):
         if not self.can_grow():
             return False
         #negage = 1.0 if self.age == 0 else 1.0 / self.age
         #self.direction = self.direction + (self.gravity_axis * strength * negage)
-        self.direction = self.direction.lerp(-self.gravity_axis, strength)
+        self.direction = self.direction.lerp(-self.gravity_axis, self.geolocate_ratio.next())
         return True
             
     def grow(self):
@@ -348,21 +385,33 @@ class Tip():
             self.geolocate()
     
             self.last_loc = self.loc
-            self.loc = self.loc + (self.direction * self.speed)
+            self.loc = self.loc + (self.direction * self.speed.next())
             self.rq = self.update_q()
             
             # Lay down slice
             self.new_slice()
             #self.cur_slice = self.branch.append(Slice(self.cell_res, start_radius=self.start_radius, center=self.loc, normal=self.direction, proto_cell=self.proto_cell))
-            self.speed *= self.speed_decay.next()
+            #self.speed *= self.speed_decay.next()
         
         self.age += 1
         return self.bifurcate()
 
     def bifurcate(self):
-        if self.age % self.bifurc_period == 0 and self.can_bifurcate():
+        if self.age % self.bifurc_period.value == 0 and self.can_bifurcate():
             vects = self.bifurcate_dir()
             self.bifurc_count += 1
+            self.bifurc_period.next()
+            self.bifurcations.next()
+            self.biphase_offset.next()
+            self.bifurc_sr.next()
+            self.bifurc_inclination.next()
+            self.bifurc_radius_ratio.next()
+            self.bifurc_stop.next()
+            self.stop_age.next()
+            self.max_generation.next()
+            self.speed_decay.next()
+            self.photolocate_ratio.next()
+            self.geolocate_ratio.next()
             return vects
         else:
             return None
@@ -374,26 +423,26 @@ class Tip():
         v1 = self.direction
         # use number of bifurcations as longitudinal slice width for branch direction
         mp2 = math.pi * 2
-        r = mp2 / self.bifurcations
+        r = mp2 / self.bifurcations.value
         p = mp2 * self.phase
         #print(self.bifurcations, r, p, self.phase)
         o = []
-        for i in range(0, self.bifurcations):
+        for i in range(0, self.bifurcations.value):
             x = math.sin(r * i + p)
             y = math.cos(r * i + p)
             v2 = mathutils.Vector((x, y, 0.0))
             # Rotate v2 so that v1 is it's (x,y) plane's normal
             # ie: make v2 orthogonal to v1 (the direction of growth for this tip)
             v2.rotate(self.rq) # = self.normal_transpose(v2, v1)
-            v2 = v2.lerp(v1, self.bifurc_inclination)
+            v2 = v2.lerp(v1, self.bifurc_inclination.value)
             o.append(v2 + self.loc)
         #print(o)
-        self.phase += self.biphase_offset
+        self.phase += self.biphase_offset.value
         return o
         
 class Shoot(Tip):
-    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.45, hormones=[], data={}, bifurcation=(4, 2, 0.33, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8, start_at_0=True, start_radius=(0.01, 0.01), cell_growth=None, proto_cell=None):
-        super().__init__(branch, loc, dir=dir, speed=speed, hormones=hormones, data=data, bifurcation=bifurcation, cell_res=cell_res, start_at_0=start_at_0, start_radius=start_radius, cell_growth=cell_growth, proto_cell=proto_cell)
+    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.45, hormones=[], data={}, bifurcation=(4, 2, 0.33, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8, start_at_0=True, start_radius=(0.01, 0.01), cell_growth=None, dna=None):
+        super().__init__(branch, loc, dir=dir, speed=speed, hormones=hormones, data=data, bifurcation=bifurcation, cell_res=cell_res, start_at_0=start_at_0, start_radius=start_radius, cell_growth=cell_growth, dna=dna)
         # Shoots are positively phototropic (towards the light), negatively geotropic (away from gravity)
         # Shoots react to certain hormones in different ways (auxins are what cause the above)
         # ie: in the cells dropped, the auxins accumulate on a shaded side
@@ -406,8 +455,8 @@ class Shoot(Tip):
         # causing the cells to grow faster in the growth direction
         
 class Root(Tip):
-    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.3, hormones=[], data={}, bifurcation=(4, 3, 0.5, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8, start_at_0=True, start_radius=(0.01, 0.01), cell_growth=None, proto_cell=None):
-        super().__init__(branch, loc, dir=dir, speed=speed, hormones=hormones, data=data, bifurcation=bifurcation, cell_res=cell_res, start_at_0=start_at_0, start_radius=start_radius, cell_growth=cell_growth, proto_cell=proto_cell)
+    def __init__(self, branch, loc, dir=(0.0, 0.0, 1.0), speed=0.3, hormones=[], data={}, bifurcation=(4, 3, 0.5, 0.618, 0.4, 0.8, 0, 0, 10), cell_res=8, start_at_0=True, start_radius=(0.01, 0.01), cell_growth=None, dna=None):
+        super().__init__(branch, loc, dir=dir, speed=speed, hormones=hormones, data=data, bifurcation=bifurcation, cell_res=cell_res, start_at_0=start_at_0, start_radius=start_radius, cell_growth=cell_growth, dna=dna)
         # Roots are negatively phototropic and positively geotropic
         
 
@@ -523,7 +572,14 @@ def p_sin1(param):
     return prng(math.sin(param.value - param.min) + 1.0, param)
 
 def p_sin(param):
-    return prng(math.sin(param.count) + 1.0, param)
+    o = prng((math.sin(param.count * param.freq) + 1.0) * 0.5, param)
+    return o
+    
+def p_square(param):
+    return prng((math.sin(param.count * param.freq) + 1.0) * 0.5, param)
+
+def p_square_y(param):
+    return prng((math.cos(param.count * param.freq) + 1.0) * 0.5, param)
     
 def p_sin2(param):
     return prng(math.sin(param.count * param.value) + 1.0, param)
@@ -549,8 +605,11 @@ def p_random(param):
 def p_random_int(param):
     return int(p_random(param))
 
-def p_cos(param):
+def p_cos1(param):
     return prng(math.cos(param.value - param.min) + 1.0, param)
+
+def p_cos(param):
+    return prng(math.cos(param.value * param.freq) + 1.0, param)
 
 def p_tuple_next(bt):
     o = []
@@ -600,7 +659,8 @@ def make_mesh(name):
     bm.from_mesh(m)
     return o, m, bm
 
-# Tree Class
+#class Gene():
+#    def __init__(self):
   
 class Tree():
     def __init__(self, name="Tree", seed_r="GrowF"):
@@ -631,69 +691,89 @@ class Tree():
     def begin(self):
         # represents one growth step
         bifurc = (8, 2, 0.2, 0.718, 0.5, 0.3, 8, 0, 4)
-        # between bifurc, branches, situation, tip growth ratio, tip growth angle, stop branching, stop growing, level depth
-        bparams = self.dna.put("branches", (
-            Param(8, vmin=5, vmax=12, func=p_random_int),
-            Param(1, vmin=1, vmax=4, func=p_random_int),
-            Param(0.15, vmin=0.0, vmax=0.5, func=p_random),
-            Param(0.718, vmin=0.9, vmax=1.0, func=p_random),
-            Param(0.5, vmin=0.5, vmax=1.0, func=p_random),
-            Param(0.3, vmin=0.0, vmax=0.8, func=p_random),
-            Param(8, vmin=5, vmax=12, func=p_random_int),
-            Param(0, vmin=0, vmax=20, func=p_random_int),
-            Param(4, vmin=3, vmax=20, func=p_random_int)
+        # between bifurc, branches, situation, tip growth ratio, tip growth angle, stop branching, stop growing, level depth, speed, speed decay
+        bparams = self.dna.put("branch", (
+            Param(2, vmin=3, vmax=8, func=p_bump, freq=10),          # section height
+            Param(1, vmin=1, vmax=4, func=[2]),                 # branch number
+            Param(0.15, vmin=0.0, vmax=0.5, func=p_none),           # radial branch angle
+            Param(0.718, vmin=0.9, vmax=1.0, func=p_none),          # tip growth ratio
+            Param(0.5, vmin=0.0, vmax=0.9, func=p_sin, freq=3),            # branch inclination
+            Param(0.3, vmin=0.0, vmax=0.8, func=p_none),            # radius ratio
+            Param(0, vmin=5, vmax=12, func=p_none),                 # stop branching at growth steps
+            Param(0, vmin=0, vmax=20, func=p_none),                 # stop growing at growth steps
+            Param(4, vmin=3, vmax=20, func=p_none),                 # level depth
+            Param(0.25, vmin=0.1, vmax=2.0, func=p_none),           # speed
+            Param(0.98, vmin=0.618, vmax=1.11, func=p_none, freq=5), # speed decay
+            Param(0.04, vmin=-0.2, vmax=0.2, func=p_none, freq=10),  # photolocate ratio
+            Param(0.02, vmin=0.02, vmax=0.02, func=p_none, freq=10) # geolocate_ratio
         ))
-        #(x scale, y scale, x growth matrix, y growth matrix)
+        #(x scale, y scale, x growth matrix, y growth matrix, growth rate all, rate ease radial, rate ease away)
         start_radius = self.dna.put("slice", (
-            Param(0.01, vmin=0.005, vmax=0.05, func=p_bump, freq=3),
-            Param(0.01, vmin=0.005, vmax=0.05, func=p_bump_y, freq=3),
-            Param(1.0,  vmin=1.0, vmax=5.0, func=p_bump, freq=100),
-            Param(1.0,  vmin=1.0, vmax=5.0, func=p_bump_y, freq=100),
+            Param(0.01, vmin=0.005, vmax=0.05, func=[p_square,p_none], freq=100),
+            Param(0.01, vmin=0.005, vmax=0.05, func=p_square_y, freq=3),
+            Param(1.0,  vmin=1.0, vmax=5.0, func=p_square, freq=100),
+            Param(1.0,  vmin=1.0, vmax=5.0, func=p_square_y, freq=100),
+            Param(1.0, vmin=1.0, vmax=2.0, func=p_none, freq=100),
+            Param(1.0, vmin=0.1, vmax=2.0, func=p_none, freq=0.5),
+            Param(1.0, vmin=0.1, vmax=2.0, func=p_none, freq=0.5)
         ))
-        cell_growth, cell_res = self.dna.put("cell", (
-            Param(1.0, vmin=0.5, vmax=4.0, func=p_bump, freq=100),
-            Param(48) #, vmin=8, vmax=80, func=p_random_int)
+        # cell growth, cell resolution, minimum neighbor distance, cell "toward" movement ease, cell ease for "away"
+        cell = self.dna.put("cell", (
+            Param(3.0, vmin=0.5, vmax=8.0, func=[p_square,p_none], freq=8),
+            Param(24), #, vmin=8, vmax=80, func=p_random_int)
+            Param(0.001, vmin=0.001, vmax=0.002, func=p_none),
+            Param(0.05, vmin=0.01, vmax=0.8, func=p_none, freq=3),
+            Param(0.01, vmin=0.01, vmax=0.2, func=p_none, freq=3)
         ))
+        cell_growth, cell_res = cell[0], cell[1]
         
+        self.cell_count = cell_res.value
         # Comment this out if you want to set specific starting bifurcation parameters
-        bifurc = p_tuple_next(bparams)
-        srad = p_tuple_next(start_radius)
+        #bifurc = p_tuple_next(bparams)
+        #srad = p_tuple_next(start_radius)
         
         dir_init = mathutils.Vector((0.0, 0.0, 1.0))
 
         # print(cell_res, cell_growth)
-        u1 = Shoot(None, (0.0, 0.0, 0.0), dir=dir_init.normalized(), bifurcation=bifurc, cell_res=cell_res, cell_growth=cell_growth)
+        u1 = Shoot(None, (0.0, 0.0, 0.0), dir=dir_init.normalized(), dna=self.dna, bifurcation=bifurc, cell_res=cell_res, cell_growth=cell_growth)
         self.tips = [u1]
     
     def grow(self, steps=1):
-        bparams = self.dna.get("branches")
+        bparams = self.dna.get("branch")
         start_radius = self.dna.get("slice")
-        cell_growth, cell_res = self.dna.get("cell")
+        cell = self.dna.get("cell")
+        cell_growth, cell_res = cell[0], cell[1]
 
         # Growth loop (z = age = generations in CA or whatever time is calculated as)
         nv = None
         for z in range(0, steps):
             for t in self.tips: # For all Tips
-                #nv = bm.verts.new(t.loc)
-                #if t.cache_vertex is not None:
-                #    bm.edges.new((nv, t.cache_vertex))
-                #t.cache_vertex = nv
                 eg = t.grow()
                 self.cell_count += cell_res.next()
                 
                 if eg is not None:  # Bifurcation
+                    bifurc = p_tuple_next(bparams)
                     for e in eg:
                         dir = e - t.loc
-                        bifurc = p_tuple_next(bparams) # Comment out to use uniform bifurcation parameters
-                        srad = p_tuple_next(start_radius)
-                        print(bifurc, t, dir, t.last_loc)
-                        nt = Shoot(t, tuple(t.last_loc), dir=dir.normalized(), speed=t.speed * t.bifurc_sr, bifurcation=bifurc, cell_res=cell_res, start_radius=srad, cell_growth=cell_growth)
+                        #bifurc = p_tuple_next(bparams) # Comment out to use uniform bifurcation parameters
+                        #srad = p_tuple_next(start_radius)
+                        #print(bifurc, t, dir, t.last_loc)
+                        #nt = Shoot(t, tuple(t.last_loc), dir=dir.normalized(), dna=self.dna, bifurcation=bifurc, cell_res=cell_res, start_radius=srad, cell_growth=cell_growth)
+                        nt = Shoot(t, tuple(t.last_loc), dir=dir.normalized(), dna=t.dna, cell_res=cell_res, cell_growth=cell_growth)
                         nt.phase = t.phase
                         nt.generation = t.generation + 1
                         nt.max_generation = t.max_generation
                         nt.cache_vertex = nv
                         self.tips.append(nt)
             self.age += 1
+            
+    def make_skeleton(self, bm):
+        for t in self.tips:
+            nv = bm.verts.new(t.loc)
+            if t.cache_vertex is not None:
+                bm.edges.new((nv, t.cache_vertex))
+            t.cache_vertex = nv
+
 
     def make(self, steps=1):
         # Goal ... create a growth matrix of cells 
@@ -706,6 +786,10 @@ class Tree():
 
         self.begin()
         self.grow(steps=steps)
+        
+        # The skinning loop I created below is set up to not use the commented out code here
+        # It is considered a slowdown to ensure the lookup table while creating a mesh in blender
+        # so if you edit the algorithm and decide to 
         # Make sure faces can be made by looking up vertices
         #if hasattr(bm.verts, "ensure_lookup_table"): 
         #    bm.verts.ensure_lookup_table()
@@ -721,30 +805,25 @@ class Tree():
                     lsc = len(slc.cells)
                     for i, cell in enumerate(slc.cells):
                         vert = bm.verts.new(cell.loc)
-                        #print(verts)
                         vv = vert if i == 0 else verts[0] if i == lsc else verts[-1]
-                        # Vertices for adding faces and the like
-                        print(si, i, lsc, len(prevvert))
-                        if si > 0 and i > 0:
-                            pv = prevvert[i-1] if i < lsc else prevvert[0]
-                            #print(prevvert)
-                            f = (
-                                vert,
-                                vv,
-                                pv,
-                                prevvert[i],
-                            )
-                            bm.faces.new(f)
-                        #else:
-                        #    if si == lb - 1:
-                        #        print(si, lb)
-                        #        print(vert, tv, vv)
-                        #        f = (
-                        #            vert,
-                        #            tv,
-                        #            vv
-                        #        )
-                        #        bm.faces.new(f)
+                        if si > 0:
+                            if i > 0:
+                                if i < lsc:
+                                    f = (
+                                        vert,           # 0, 0
+                                        vv,             # 0, -1
+                                        prevvert[i-1],  # -1, -1
+                                        prevvert[i],    # -1, 0
+                                    )
+                                    bm.faces.new(f)
+                                    if i == lsc - 1:
+                                        f = (
+                                            verts[0],
+                                            vert,
+                                            prevvert[-1],
+                                            prevvert[0]
+                                        )
+                                        bm.faces.new(f)
 
                         if si > 0:
                             # Add the cell neighborhood (Should be offloaded to another loop)
@@ -754,22 +833,7 @@ class Tree():
 
                         verts.append(vert)
                     prevvert = verts
-                    prevslice = slc
-        
-        # Face connectivity kernels (explains a relative n-gon to current vertex)
-        #fcon = [0, 1]
-        #fconr = [0, -(resolution - 1), 1, resolution]
-        
-        # Add all faces to the mesh
-        #mod = resolution
-        #for i in range(0, len(bm.verts)):
-        #    if i < len(bm.verts) - resolution:
-        #        fo = []
-        #        f = fconr if i % mod == resolution - 1 else fcon
-        #        for c in f:
-        #            fo.append(bm.verts[i + c])
-        #        bm.faces.new(tuple(fo))
-                
+                    prevslice = slc                
 
         bm.verts.index_update()
                 
@@ -777,7 +841,7 @@ class Tree():
         print("Final Cells:", self.cell_count)
         set_mesh(bm, m)
     
-t = Tree()
-t.make(steps=50)
+t = Tree(seed_r="GrowF")
+t.make(steps=10)
 
 #t.grow(20)
