@@ -41,6 +41,8 @@ Slices are a center cell and a generate a number of radial cells laid down in a 
 
 Radial Cells are laid down radially on each slice of each tip, forming the surface structure of branches, leaves, flowers, buds, and whatever other shape that can be created by the GrowF algorithm. The slice cell lays down the radial cells using specific curves over the series.  Radial cells have other radial cells as neighbors (a linking kernel is used on the slice), as well as being linked to the cell directly "above" them mutually, being affected by them and affecting them via "boids" like rules.
 
+![Param_plin_branch_13](https://user-images.githubusercontent.com/1012779/145695569-194ff996-34f2-44dc-8eee-79568c1db41e.png)
+
 ## Parameters
 
 Recently, I have created a "Param" class that acts as a value which is static, or can be dynamic.  This means that there is now the possibility of cell differentiation. The dynamic functions of parameters are usually infinite sets or repeating finite sets of numbers which represent future possible values of the parameter.  Parameters are now set up inside the DNA of each cell.  Each parameter has a "next" function which can be called for instance on bifurcation, or each cell step, etc., allowing every aspect of each cell to have some sort of progression over it's life span, controlling things like the cell's growth coeficient or it's initial placement.  Now parameters are part of the core functionality of the algorithm, allowing a function or set of functions to define the values of any aspect of growth over time.
