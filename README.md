@@ -49,11 +49,12 @@ Recently, I have created a "Param" class that acts as a value which is static, o
 
 ## Features of GrowF Virtual Organisms
 
-* Parameter based oranism life arc design (designer DNA)
+* Parameter based organism life arc design (designer DNA)
 * Genetic Algorithm based design (organic DNA)
 * Namespaces give organisms a "Multiverse effect"
 * Evolution controlled cell nucleus Neural Networks (TBA)
 * Cell differentiation over time and space
+* All organisms are fully destructable (all parts/organs can be removed after growth)
 
 ## Hormones and Chemical Messaging between Cells
 
@@ -67,4 +68,8 @@ Part of why I started GrowF was inspired by the idea of the many metaverses that
 
 Living virtual organisms grown with GrowF are unique.  The 3D Models of their life progression can be included in games using Non-Fungible Tokens (NFTs).  If you can own any unique digital item, why not own a tree that you have bred, or trimmed, or simply that you found in a VR game somewhere.  Think about trimming, or when trees bear fruits that have specific properties or visual peculiarities.  Each branch of the tree can be removed, the fruits or leaves, (or whatever ends up growing on a bifurcation) can be separated from the tree, recorded as removed in the tree's history (affecting it's model forever).  Just like with real trees, the seeds in those fruits can be minted and given to friends or sold, reflecting the value that you have added to the tree by planting and growing it somewhere in the Metaverse.  It could end up seeding virtual forests, or being used as CG set pieces in movies or video games depending on who buys it from you.
 
+## So, You are a Crafter?
 
+![destructable](https://user-images.githubusercontent.com/1012779/146231113-7a7ecd6a-49ef-4843-8180-a4dd39cd13a2.png)
+
+Everything grown with GrowF has differentiated parts or organs that you can use seperately.  You can pick flowers, stems, leaves, or anything that grows for you, and use them as part of something else, or as a standalone mesh/model.
