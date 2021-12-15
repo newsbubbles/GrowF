@@ -5,7 +5,8 @@ Grow Function: Generate 3D Stacked Bifurcating Double Deep Cellular Automata bas
 
 TLDR; High Def Living Trees that you can breed, trim and mint as NFTs on Solana, Ethereum, Cardano and other blockchain networks.
 
-This demo represents the current state of the codebase.  If anyone wishes to join this project, please contact or fork.
+This demo represents the current state of the codebase.  If anyone wishes to join this project, you are invited to join our Discord:
+https://discord.gg/A4GT25qw
 
 Written in Python using the Blender Library
 
