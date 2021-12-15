@@ -9,6 +9,8 @@ This demo represents the current state of the codebase.  If anyone wishes to joi
 
 Written in Python using the Blender Library
 
+How to Custom Design Growth Parameters: https://www.youtube.com/watch?v=ebMEqNAcK6w
+
 Current state of development https://www.youtube.com/watch?v=R8qGZmVQ0rU
 
 ## Installation
