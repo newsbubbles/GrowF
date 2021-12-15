@@ -8,7 +8,10 @@ TLDR; High Def Living Trees that you can breed, trim and mint as NFTs on Solana,
 This demo represents the current state of the codebase.  If anyone wishes to join this project, you are invited to join our Discord:
 https://discord.gg/A4GT25qw
 
-Written in Python using the Blender Library
+Written in Python using the Blender Library (For now!)
+
+Since this is a highly visual project, I have a YouTube channel to help illustrate how this works:
+https://www.youtube.com/channel/UCouGwkeDCvuvPGXYA3VwJwQ
 
 How to Custom Design Growth Parameters: https://www.youtube.com/watch?v=ebMEqNAcK6w
 
@@ -16,15 +19,18 @@ Current state of development https://www.youtube.com/watch?v=R8qGZmVQ0rU
 
 ## Installation
 * Install Blender if you don't already have it
-* Open treegen.blend
+* Copy or download tree.py
+* In a new scene, add tree.py to the Script editor
+* Mess with Groth Parameters in the script (for the brave right now)
+* Press Play in the script editor to generate an organism
 
-Once opened, you can generate whatever tree is currently there by default by going to the scripting tab, opening tree.py and pressing the Run button
+The current state of things is being improved upon.  Soon there will be an interface in Blender to handle the parameters and this can become a standardized Blender plugin as well.
 
 ![Banner2](https://user-images.githubusercontent.com/1012779/144967405-9696e42b-45a9-45ac-90e8-0b153df6ccc4.png)
 
 ## We Have the Technology
 
-Recent developments in the fields of Cellular Automata and Genetic Algorithms have led to the possibility of growing living organisms in higher dimensions.  Many projects like Lenia, The Life Engine and even VR games like Playne, and Inward have made a big deal of living organisms in games and tech culture.  These living organisms can behave like bacteria, like larger soft-bodied oganisms, or like Trees.  On a scientific level, there exist virtual living ecosystems of over 500,000 plants in simulations like the ones seen in the paper "[Synthetic Silviculture: Multi-Scale Modeling of Plant Ecosystems](https://storage.googleapis.com/pirk.io/projects/synthetic_silviculture/index.html)". These multi-scale simulations are focused on larger scale dynamics, creating realistic, yet estimated details, (albeit through rigorous scientific analysis to approximate reality). 
+Recent developments in the fields of Cellular Automata and Genetic Algorithms have led to the possibility of growing living organisms in higher dimensions.  Many simulation projects like [Lenia](https://github.com/Chakazul/Lenia), [The Life Engine](https://www.youtube.com/channel/UCwBhBDsqiQflTMLy2epbQVw) and even VR games like [Playne](https://store.steampowered.com/app/865540/PLAYNE__The_Meditation_Game/), and Inward have made a big deal of living organisms in games and tech culture.  These living organisms can behave like bacteria, like larger soft-bodied oganisms, or like Trees.  On a scientific level, there exist virtual living ecosystems of over 500,000 plants in simulations like the ones seen in the paper "[Synthetic Silviculture: Multi-Scale Modeling of Plant Ecosystems](https://storage.googleapis.com/pirk.io/projects/synthetic_silviculture/index.html)". These multi-scale simulations are focused on larger scale dynamics, creating realistic, yet estimated details, (albeit through rigorous scientific analysis to approximate reality). 
 
 But that begs the question, how high definition can we go in creating growing 3D systems?  Can cell differentiation be accquired by genetic algorithm in new and spontaneous ways which account for ecosystem? This project aims to advance toward answering those questions, starting with what we think will end up being hi-res tree models, but could end up as anything.
 
@@ -58,6 +64,22 @@ Recently, I have created a "Param" class that acts as a value which is static, o
 * Evolution controlled cell nucleus Neural Networks (TBA)
 * Cell differentiation over time and space
 * All organisms are fully destructable (all parts/organs can be removed after growth)
+
+# Roadmap
+
+* Finish the color system
+* Finish the Hormones and Chemical messaging system
+* Finish coding the Genetic Algorithm for natural selection of organisms
+* Creation of GrowF Protocol
+* Create User Interface in Blender
+* Port python code to C++ and Javascript
+* Set up C++ API for GrowF so that it can run as a background process
+* Create Unity and Unreal Modules that use the C++ library
+* Create Javascript/HTML5 3D organism viewer
+* Begin project Artifice
+* Integration with Blockchains
+* NFT Minting directly from the UI in Blender or Unity
+* Create Protocols for minting GrowF organisms in-game for any game
 
 ## Hormones and Chemical Messaging between Cells
 
