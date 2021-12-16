@@ -14,6 +14,7 @@ import mathutils
 import math
 import random
 import types
+import colorsys
 
 _Z = mathutils.Vector((0.0, 0.0, 1.0)) # Eventually will be moved, just a way to know which way is the template normal
 
@@ -22,7 +23,7 @@ _params_live = True
 
 # Param is the basic unit of growth instruction, it uses any infinite wave function(s) to define step-increments of value, along with limits of that value
 class Param():
-    def __init__(self, value, vmin=None, vmax=None, func=None, steps=None, freq=1.0, sequence=None):
+    def __init__(self, value, vmin=None, vmax=None, func=None, steps=None, freq=1.0, sequence=None, inherit=True):
         self.value = value
         self.orig = value
         self.min = vmin
@@ -31,6 +32,7 @@ class Param():
         self.steps = steps
         self.freq = freq
         self.sequence = sequence    # Use sequence for a repeating list
+        self.inherit = inherit
 
         self.cfunc = 0
         self.count = 0
@@ -58,9 +60,9 @@ class Param():
     def first(self):
         return self.orig
     
-    def copy(self, inherit_count=True):
+    def copy(self, inherit=True):
         p = Param(self.orig, vmin=self.min, vmax=self.max, func=self.func, steps=self.steps, freq=self.freq, sequence=self.sequence)
-        if inherit_count:
+        if self.inherit or inherit:
             p.count = self.count
             p.cfunc = self.cfunc
         return p
@@ -119,13 +121,22 @@ class Cell():
         self.ease_away = Param(0.01) if dna is None else dna.get("cell")[4].copy()
         self.ease2, self.ease_away2 = 1.0, 1.0
         self.age = 0
-        self.color = mathutils.Color((0.3, 1.0, 0.2))
+        self.color = mathutils.Color((0.3, 1.0, 0.2))    # rgba
+        self.hue = Param(0.848, vmin=0.375, vmax=0.848, func=p_sin, freq=0.5) if dna is None else dna.get("cell")[5].copy() #, vmin
+        self.saturation = Param(0.336, vmin=0.262, vmax=0.336, func=p_sin, freq=1.0) if dna is None else dna.get("cell")[6].copy()
+        self.brightness = Param(0.934, vmin=0.564, vmax=0.934, func=p_sin, freq=1.0) if dna is None else dna.get("cell")[7].copy()
         self.rate_growth_radial = 5.0
+        self.set_color()
         self.targets = [] # Can be turned into a way to react to target objects
         self.neighbors = []
         self.hormones = []
         
         self.v = self.random_vector()
+    
+    def set_color(self):
+        self.color.h, self.color.s, self.color.v = self.hue.value, self.saturation.value, self.brightness.value
+        #r, g, b = colorsys.hsv_to_rgb(self.hue.value, self.saturation.value, self.brightness.value)
+        #self.color = mathutils.Color((r, g, b))
         
     def random_vector(self, vmax=0.06):
         vx = random.random() * (vmax * 2) - vmax
@@ -147,12 +158,16 @@ class Cell():
         #self.move_rest()
         
         self.growth_counters()
+        self.set_color()
         
     def grow_radial(self):
         v = self.origv * (1 / (self.age + 1))
         self.nv = v * self.rate_growth_radial
         
     def growth_counters(self):
+        self.hue.next()
+        self.brightness.next()
+        self.saturation.next()
         self.nloc = self.loc + self.nv
         self.age += 1
 
@@ -205,14 +220,15 @@ class Cell():
 
 class Slice():
     def __init__(self, neighbors, start_radius=(1, 1), detail_depth=0.1, center=mathutils.Vector((0.0, 0.0, 0.0)), normal=mathutils.Vector((0.0, 0.0, 1.0)), rate_growth_radial=None, mult_growth_radial=1.0, dna=None):
+        ds = dna.get("slice")
         self.neighbors = neighbors
         self.center = center
         self.orientation = normal
         self.rot_matrix = rot_q(self.orientation)
-        self.radius = start_radius
+        self.radius = (Param(1.0), Param(1.0)) if dna is None else (ds[0].copy(inherit=False), ds[1].copy(inherit=False))
         self.rate_growth_radial = Param(1.0) if rate_growth_radial is None else rate_growth_radial
-        self.rate_ease_radial = Param(0.1) if dna is None else dna.get("slice")[5].copy()
-        self.rate_ease_away = Param(0.01) if dna is None else dna.get("slice")[6].copy()
+        self.rate_ease_radial = Param(0.1) if dna is None else ds[5].copy()
+        self.rate_ease_away = Param(0.01) if dna is None else ds[6].copy()
         self.mult_growth_radial = mult_growth_radial
         self.ddepth = detail_depth / 2
         self.dna = dna
@@ -224,8 +240,8 @@ class Slice():
     def init_circular(self):
         r = math.pi * 2 / self.neighbors
         for i in range(0, self.neighbors):
-            x = math.sin(i * r) * self.radius[0]
-            y = math.cos(i * r) * self.radius[1]
+            x = math.sin(i * r) * self.radius[0].next()
+            y = math.cos(i * r) * self.radius[1].next()
             v = mathutils.Vector((x, y, 0.0))
             v.rotate(self.rot_matrix.normalized())
             v = v + self.center
@@ -284,15 +300,16 @@ class Tip():
         self.speed_decay = Param(0.98) if dna is None else br[10].copy() #, vmin=0.818, vmax=1.16, func=p_random)     # ratio of decay of growth speed per growth
         self.photolocate_ratio = Param(0.04) if dna is None else br[11].copy()
         self.geolocate_ratio = Param(0.02) if dna is None else br[12].copy()
+        self.branch_growth_rate = Param(1.0) if dna is None else br[13].copy()         #if it uses .copy like the rest, it gets "normal" behavior, but if not, uses linked behavior
         self.data = data
         self.hormones = hormones    # hormones are dropped as a total of what is available        
         
         # Slices and surface cells
         self.start_radius = start_radius
-        self.cell_growth_rate = cell_growth
+        self.cell_growth_rate = cell_growth if dna is None else dna.get("cell")[0]
         self.slice_growth_rate = Param(2.0) if dna is None else dna.get("slice")[4]
         self.branch = []
-        self.cell_res = cell_res
+        self.cell_res = cell_res if dna is None else dna.get("cell")[1]
         self.cur_slice = None
 
         # Working parameters (counters, history, etc)
@@ -323,7 +340,7 @@ class Tip():
         # when the dropped cells receive light, they can spend their auxins
         # literally each cell needs to raytrace to a light source
         # upon receiving the light, it slowly depreciates the amount of auxins it has
-        # other cells can pass it auxins if 
+        # other cells can pass it auxins if the function that determines auxin transfer allows
         # how will curvature of final outward mesh handle things like where branch nodes meet their parents?
         #  since the tip only drops a growing surface cell, it will be included as a neighbor to the cells dropped by the tip's parent branch
         
@@ -338,7 +355,7 @@ class Tip():
             center = self.loc, 
             normal = self.direction,
             rate_growth_radial = self.cell_growth_rate,
-            mult_growth_radial = self.slice_growth_rate.next(),
+            mult_growth_radial = self.slice_growth_rate.next() * self.branch_growth_rate.value,
             dna = self.dna
         ))
     
@@ -397,7 +414,7 @@ class Tip():
         return self.bifurcate()
 
     def bifurcate(self):
-        if self.age % self.bifurc_period.value == 0 and self.can_bifurcate():
+        if self.age % self.bifurc_period.value == 0 and self.can_bifurcate() and self.can_grow():
             vects = self.bifurcate_dir()
             self.bifurc_count += 1
             self.bifurc_period.next()
@@ -562,6 +579,9 @@ def prng(value, param):
 def p_log(param):
     return prng(math.log(param.value - param.min), param)
 
+def p_log_r(param):
+    return prng(1 / math.log((param.count + 1) * 10), param)
+
 def p_rat(param):
     return param.value * param.freq
 
@@ -576,13 +596,19 @@ def p_sin(param):
     return o
     
 def p_square(param):
-    return prng((math.sin(param.count * param.freq) + 1.0) * 0.5, param)
+    return prng(int((math.sin(param.count * param.freq) + 1.0) * 0.5), param)
 
 def p_square_y(param):
-    return prng((math.cos(param.count * param.freq) + 1.0) * 0.5, param)
+    return prng(int((math.cos(param.count * param.freq) + 1.0) * 0.5), param)
     
 def p_sin2(param):
     return prng(math.sin(param.count * param.value) + 1.0, param)
+
+def p_cos1(param):
+    return prng((math.cos(param.value - param.min) + 1.0) * 0.5, param)
+
+def p_cos(param):
+    return prng((math.cos(param.count * param.freq) + 1.0) * 0.5, param)
 
 def p_spike(param):
     return prng(1.0 - abs(math.sin(param.count * param.freq)), param)
@@ -599,17 +625,29 @@ def p_bump_y(param):
 def p_rlog(param):
     return prng(math.sin(param.value - param.min) + 1.0, param)
 
+def p_tanh(param):
+    return prng((math.tanh((param.count * param.freq) - 2) + 1) * 0.5, param)
+
+def p_tanh_r(param):
+    return prng((-math.tanh((param.count * param.freq) - 2) + 1) * 0.5, param)
+
 def p_random(param):
     return prng(random.random(), param)
 
 def p_random_int(param):
     return int(p_random(param))
 
-def p_cos1(param):
-    return prng(math.cos(param.value - param.min) + 1.0, param)
+def p_lin(param):
+    o = param.value + param.freq
+    if o > param.max:
+        o = o - param.max + param.min
+    return o
 
-def p_cos(param):
-    return prng(math.cos(param.value * param.freq) + 1.0, param)
+def p_lin_r(param):
+    o = param.value - param.freq
+    if o < param.min:
+        o = o - param.min + param.max
+    return o
 
 def p_tuple_next(bt):
     o = []
@@ -633,7 +671,7 @@ def rot_q(v):
 # Mesh functions for bmesh
 
 def link_new_obj(name):
-    m = bpy.data.meshes.new("Tree")
+    m = bpy.data.meshes.new(name)
 
     # Instantiates a new object with the previous mesh specified by m
     o = bpy.data.objects.new(name, m)
@@ -657,7 +695,8 @@ def make_mesh(name):
     # Get bmesh
     bm = bmesh.new()
     bm.from_mesh(m)
-    return o, m, bm
+    cl = bm.loops.layers.color.new("color")
+    return o, m, bm, cl
 
 #class Gene():
 #    def __init__(self):
@@ -685,45 +724,48 @@ class Tree():
         
     # Actions
     
-    def plant(self, location=(0.0, 0.0, 0.0)):
-        return None
-    
-    def begin(self):
-        # represents one growth step
-        bifurc = (8, 2, 0.2, 0.718, 0.5, 0.3, 8, 0, 4)
+    def begin(self, location=(0.0, 0.0, 0.0), direction=(0.0, 0.0, 1.0)):
+        # Growth Instructions
+        # Each section has a tuple of Param objects which define a finitely infinite series 
         # between bifurc, branches, situation, tip growth ratio, tip growth angle, stop branching, stop growing, level depth, speed, speed decay
         bparams = self.dna.put("branch", (
-            Param(2, vmin=3, vmax=8, func=p_bump, freq=10),          # section height
-            Param(1, vmin=1, vmax=4, func=[2]),                 # branch number
-            Param(0.15, vmin=0.0, vmax=0.5, func=p_none),           # radial branch angle
-            Param(0.718, vmin=0.9, vmax=1.0, func=p_none),          # tip growth ratio
-            Param(0.5, vmin=0.0, vmax=0.9, func=p_sin, freq=3),            # branch inclination
-            Param(0.3, vmin=0.0, vmax=0.8, func=p_none),            # radius ratio
-            Param(0, vmin=5, vmax=12, func=p_none),                 # stop branching at growth steps
-            Param(0, vmin=0, vmax=20, func=p_none),                 # stop growing at growth steps
-            Param(4, vmin=3, vmax=20, func=p_none),                 # level depth
-            Param(0.25, vmin=0.1, vmax=2.0, func=p_none),           # speed
-            Param(0.98, vmin=0.618, vmax=1.11, func=p_none, freq=5), # speed decay
-            Param(0.04, vmin=-0.2, vmax=0.2, func=p_none, freq=10),  # photolocate ratio
-            Param(0.02, vmin=0.02, vmax=0.02, func=p_none, freq=10) # geolocate_ratio
+            Param(2, vmin=3, vmax=8, func=[8], freq=10),                            # section height; steps between bifurcation (integer)
+            Param(1, vmin=1, vmax=4, func=[1,1,2,3], freq=1),                       # number of branches on bifurcation (integer)
+            Param(0.15, vmin=0.0, vmax=0.5, func=p_sin, freq=0.5),                    # radial branch angle
+            Param(0.718, vmin=0.9, vmax=1.0, func=p_none, freq=1),                  # tip growth ratio (float)
+            Param(0.5, vmin=0.2, vmax=0.7, func=p_sin, freq=0.3),                     # branch inclination (0.0 - 1.0)
+            Param(0.3, vmin=0.0, vmax=0.8, func=p_sin, freq=1.0),                  # radial branch angle offset per branch (0.0 - 1.0)
+            Param(4, vmin=5, vmax=12, func=p_none, freq=1.0),                       # stop branching at growth steps (integer: 0 = no limit)
+            Param(20, vmin=0, vmax=20, func=p_none, freq=1.0),                       # stop growing at growth steps (integer: 0 = no limit)
+            Param(4, vmin=3, vmax=20, func=p_none, freq=1.0),                       # level depth (integer)
+            Param(0.35, vmin=0.1, vmax=0.6, func=p_sin, freq=0.5),                 # tip growth/movement speed per growth step
+            Param(0.97, vmin=0.618, vmax=1.11, func=p_none, freq=5),                # speed decay decay of speed per growth step
+            Param(0.04, vmin=-0.2, vmax=0.2, func=p_none, freq=10),                 # photolocate ratio
+            Param(0.02, vmin=0.02, vmax=0.02, func=p_none, freq=10),                # geolocate ratio
+            Param(3.0, vmin=0.5, vmax=3.0, func=p_tanh_r, freq=0.),                 # radial growth rate coefficient for all cells on branch, declines on bifurcation
         ))
+
         #(x scale, y scale, x growth coefficient, y growth coefficient, growth rate all, rate ease radial, rate ease away)
         start_radius = self.dna.put("slice", (
-            Param(0.01, vmin=0.005, vmax=0.05, func=[p_square,p_none], freq=100),   # x scale (initial radial placement around tip)
-            Param(0.01, vmin=0.005, vmax=0.05, func=p_square_y, freq=3),            # y scale
-            Param(1.0,  vmin=1.0, vmax=5.0, func=p_square, freq=100),               # x growth coefficient
-            Param(1.0,  vmin=1.0, vmax=5.0, func=p_square_y, freq=100),             # y growth coefficient
-            Param(1.0, vmin=1.0, vmax=2.0, func=p_none, freq=100),                  # growth rate all
-            Param(1.0, vmin=0.1, vmax=2.0, func=p_none, freq=0.5),                  # ease rate: radial growth
-            Param(1.0, vmin=0.1, vmax=2.0, func=p_none, freq=0.5)                   # ease rate: away from neighbors
+            Param(0.01, vmin=0.005, vmax=0.05, func=p_tanh_r, freq=100),  # x scale (initial radial placement around tip)
+            Param(0.01, vmin=0.005, vmax=0.05, func=p_tanh_r, freq=3),             # y scale
+            Param(1.0,  vmin=1.0, vmax=5.0, func=p_sin, freq=100),              # x growth coefficient
+            Param(1.0,  vmin=1.0, vmax=5.0, func=p_cos, freq=100),              # y growth coefficient
+            Param(1.0, vmin=1.0, vmax=2.0, func=p_tanh_r, freq=0.2),              # growth rate all
+            Param(1.0, vmin=0.1, vmax=2.0, func=p_sin, freq=0.5),              # ease rate: radial growth
+            Param(1.0, vmin=0.1, vmax=2.0, func=p_cos, freq=0.5),              # ease rate: away from neighbors
         ))
+        # Cell Instructions: These parameters iterate over the lifetime of the individual cell
         # cell growth, cell resolution, minimum neighbor distance, cell "toward" movement ease, cell ease for "away"
         cell = self.dna.put("cell", (
-            Param(3.0, vmin=0.5, vmax=8.0, func=[p_square,p_none], freq=8),
-            Param(24), #, vmin=8, vmax=80, func=p_random_int)
-            Param(0.001, vmin=0.001, vmax=0.002, func=p_none),
-            Param(0.05, vmin=0.01, vmax=0.8, func=p_none, freq=3),
-            Param(0.01, vmin=0.01, vmax=0.2, func=p_none, freq=3)
+            Param(3.0, vmin=0.5, vmax=5.0, func=p_tanh, freq=8),        # cell growth rate
+            Param(16),                                                          # cell resolution (how many cells on the surface of each slice)
+            Param(0.001, vmin=0.001, vmax=0.002, func=p_none, freq=1.0),        # minimum neighbor distance (distance/closeness at which cell moves away from neighbor)
+            Param(0.05, vmin=0.01, vmax=0.2, func=p_sin, freq=8),              # ease rate: "toward" the neighbors
+            Param(0.01, vmin=0.01, vmax=0.5, func=p_none, freq=1),              # ease rate: "away" from neighbors that are too close
+            Param(0.175, vmin=0.175, vmax=0.448, func=p_tanh_r, freq=0.3),       # hue
+            Param(0.336, vmin=0.162, vmax=0.436, func=p_tanh_r, freq=0.3),       # saturation
+            Param(0.934, vmin=0.564, vmax=0.934, func=p_tanh_r, freq=0.3),       # brightness
         ))
         cell_growth, cell_res = cell[0], cell[1]
         
@@ -732,12 +774,22 @@ class Tree():
         #bifurc = p_tuple_next(bparams)
         #srad = p_tuple_next(start_radius)
         
-        dir_init = mathutils.Vector((0.0, 0.0, 1.0))
+        dir_init = mathutils.Vector(direction)
 
         # print(cell_res, cell_growth)
-        u1 = Shoot(None, (0.0, 0.0, 0.0), dir=dir_init.normalized(), dna=self.dna, bifurcation=bifurc, cell_res=cell_res, cell_growth=cell_growth)
+        u1 = Shoot(None, location, dir=dir_init.normalized(), dna=self.dna, cell_res=cell_res, cell_growth=cell_growth)
         self.tips = [u1]
     
+    def plant(self, growth_steps=1, location=(0.0, 0.0, 0.0), direction=(0.0, 0.0, 0.0)):
+        # A branch is a tip's location history stored as a Slice which consists of Cells
+
+
+        # Set the random seed, can be set also by the GA
+        random.seed(a=self.random_seed, version=2)
+
+        self.begin()
+        self.grow(steps=growth_steps)
+
     def grow(self, steps=1):
         bparams = self.dna.get("branch")
         start_radius = self.dna.get("slice")
@@ -767,35 +819,34 @@ class Tree():
                         self.tips.append(nt)
             self.age += 1
             
-    def make_skeleton(self, bm):
+    def make_skeleton(self):
+        o, m, bm = make_mesh(self.name)
         for t in self.tips:
             nv = bm.verts.new(t.loc)
             if t.cache_vertex is not None:
                 bm.edges.new((nv, t.cache_vertex))
             t.cache_vertex = nv
+        set_mesh(bm, m)
 
+    def describe(self):        
+        print("Name:", self.name)
+        print("Age:", self.age)
+        print("Tips:", len(self.tips))
+        print("Cells:", self.cell_count)
 
-    def make(self, steps=1):
-        # Goal ... create a growth matrix of cells 
-        # Decouple the actual mesh making part from growth (helps with being able to calculate mesh from history)
-        # A branch is a tip's location history stored as a Slice which consists of Cells
-        o, m, bm = make_mesh(self.name)
-
-        # Set the random seed, can be set also by the GA
-        random.seed(a=self.random_seed, version=2)
-
-        self.begin()
-        self.grow(steps=steps)
-        
+    def show(self):
         # The skinning loop I created below is set up to not use the commented out code here
         # It is considered a slowdown to ensure the lookup table while creating a mesh in blender
-        # so if you edit the algorithm and decide to 
+        # so if you decide to do some sort of bm.verts lookup, you have to uncomment the block below
+        
         # Make sure faces can be made by looking up vertices
         #if hasattr(bm.verts, "ensure_lookup_table"): 
         #    bm.verts.ensure_lookup_table()
 
-        #Skin it!
+        o, m, bm, cl = make_mesh(self.name)
+        self.name = o.name
         prevslice, prevvert = [], []
+        v_i = 0
         for tip in self.tips:
             tv = bm.verts.new(tip.loc)
             lb = len(tip.branch)
@@ -805,6 +856,8 @@ class Tree():
                     lsc = len(slc.cells)
                     for i, cell in enumerate(slc.cells):
                         vert = bm.verts.new(cell.loc)
+                        vert.index = v_i
+                        v_i += 1
                         vv = vert if i == 0 else verts[0] if i == lsc else verts[-1]
                         if si > 0:
                             if i > 0:
@@ -815,7 +868,11 @@ class Tree():
                                         prevvert[i-1],  # -1, -1
                                         prevvert[i],    # -1, 0
                                     )
-                                    bm.faces.new(f)
+                                    faz = bm.faces.new(f)
+                                    
+                                    for il, l in enumerate(faz.loops):
+                                        l[cl] = [cell.color.r, cell.color.g, cell.color.b, 1.0]
+                                        
                                     if i == lsc - 1:
                                         f = (
                                             verts[0],
@@ -823,7 +880,9 @@ class Tree():
                                             prevvert[-1],
                                             prevvert[0]
                                         )
-                                        bm.faces.new(f)
+                                        faz = bm.faces.new(f)
+                                        for il, l in enumerate(faz.loops):
+                                            l[cl] = [cell.color.r, cell.color.g, cell.color.b, 1.0]
 
                         if si > 0:
                             # Add the cell neighborhood (Should be offloaded to another loop)
@@ -835,13 +894,43 @@ class Tree():
                     prevvert = verts
                     prevslice = slc                
 
-        bm.verts.index_update()
+        #bm.verts.index_update()
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
                 
-        print("Final Tips:", len(self.tips))
-        print("Final Cells:", self.cell_count)
         set_mesh(bm, m)
-    
-t = Tree(seed_r="GrowF")
-t.make(steps=10)
+        return o
 
-#t.grow(20)
+def replace_mesh(obj_name, mesh):
+    return None
+
+def animation_test(name="AnimTest", seed="GrowF"):
+    t = Tree(name=name, seed_r=seed)
+    t.plant(growth_steps=1)
+
+def anim_handler(scene):
+    frame = scene.frame_current
+    
+
+def show_default(name, seed="GrowF", steps=20):
+    t = Tree(name=name, seed_r=seed)
+    t.plant(growth_steps=steps)
+    o = t.show()
+    t.describe()
+    return o
+
+def show_growth_procession(name, seed="GrowF", steps=20, space=4):
+    t = Tree(name=name, seed_r=seed)
+    t.plant(growth_steps=1)
+    m = steps * space
+    for i in range(0, steps):
+        o = t.show()
+        o.location = mathutils.Vector((m - (i * space), 0.0, 0.0))
+        t.grow()
+    t.describe()
+
+
+
+## Main Test
+
+show_default("Tree", steps=30)
+#show_growth_procession("Bob")
