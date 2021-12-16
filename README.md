@@ -5,23 +5,32 @@ Grow Function: Generate 3D Stacked Bifurcating Double Deep Cellular Automata bas
 
 TLDR; High Def Living Trees that you can breed, trim and mint as NFTs on Solana, Ethereum, Cardano and other blockchain networks.
 
-This demo represents the current state of the codebase.  If anyone wishes to join this project, please contact or fork.
+This demo represents the current state of the codebase.  If anyone wishes to join this project, you are invited to join our Discord:
+https://discord.gg/A4GT25qw
 
-Written in Python using the Blender Library
+Written in Python using the Blender Library (For now!)
+
+Since this is a highly visual project, I have a YouTube channel to help illustrate how this works:
+https://www.youtube.com/channel/UCouGwkeDCvuvPGXYA3VwJwQ
+
+How to Custom Design Growth Parameters: https://www.youtube.com/watch?v=ebMEqNAcK6w
 
 Current state of development https://www.youtube.com/watch?v=R8qGZmVQ0rU
 
 ## Installation
 * Install Blender if you don't already have it
-* Open treegen.blend
+* Copy or download tree.py
+* In a new scene, add tree.py to the Script editor
+* Mess with Groth Parameters in the script (for the brave right now)
+* Press Play in the script editor to generate an organism
 
-Once opened, you can generate whatever tree is currently there by default by going to the scripting tab, opening tree.py and pressing the Run button
+The current state of things is being improved upon.  Soon there will be an interface in Blender to handle the parameters and this can become a standardized Blender plugin as well.
 
 ![Banner2](https://user-images.githubusercontent.com/1012779/144967405-9696e42b-45a9-45ac-90e8-0b153df6ccc4.png)
 
 ## We Have the Technology
 
-Recent developments in the fields of Cellular Automata and Genetic Algorithms have led to the possibility of growing living organisms in higher dimensions.  Many projects like Lenia, The Life Engine and even VR games like Playne, and Inward have made a big deal of living organisms in games and tech culture.  These living organisms can behave like bacteria, like larger soft-bodied oganisms, or like Trees.  On a scientific level, there exist virtual living ecosystems of over 500,000 plants in simulations like the ones seen in the paper "[Synthetic Silviculture: Multi-Scale Modeling of Plant Ecosystems](https://storage.googleapis.com/pirk.io/projects/synthetic_silviculture/index.html)". These multi-scale simulations are focused on larger scale dynamics, creating realistic, yet estimated details, (albeit through rigorous scientific analysis to approximate reality). 
+Recent developments in the fields of Cellular Automata and Genetic Algorithms have led to the possibility of growing living organisms in higher dimensions.  Many simulation projects like [Lenia](https://github.com/Chakazul/Lenia), [The Life Engine](https://www.youtube.com/channel/UCwBhBDsqiQflTMLy2epbQVw) and even VR games like [Playne](https://store.steampowered.com/app/865540/PLAYNE__The_Meditation_Game/), and Inward have made a big deal of living organisms in games and tech culture.  These living organisms can behave like bacteria, like larger soft-bodied oganisms, or like Trees.  On a scientific level, there exist virtual living ecosystems of over 500,000 plants in simulations like the ones seen in the paper "[Synthetic Silviculture: Multi-Scale Modeling of Plant Ecosystems](https://storage.googleapis.com/pirk.io/projects/synthetic_silviculture/index.html)". These multi-scale simulations are focused on larger scale dynamics, creating realistic, yet estimated details, (albeit through rigorous scientific analysis to approximate reality). 
 
 But that begs the question, how high definition can we go in creating growing 3D systems?  Can cell differentiation be accquired by genetic algorithm in new and spontaneous ways which account for ecosystem? This project aims to advance toward answering those questions, starting with what we think will end up being hi-res tree models, but could end up as anything.
 
@@ -41,17 +50,36 @@ Slices are a center cell and a generate a number of radial cells laid down in a 
 
 Radial Cells are laid down radially on each slice of each tip, forming the surface structure of branches, leaves, flowers, buds, and whatever other shape that can be created by the GrowF algorithm. The slice cell lays down the radial cells using specific curves over the series.  Radial cells have other radial cells as neighbors (a linking kernel is used on the slice), as well as being linked to the cell directly "above" them mutually, being affected by them and affecting them via "boids" like rules.
 
+![Param_plin_branch_13](https://user-images.githubusercontent.com/1012779/145695569-194ff996-34f2-44dc-8eee-79568c1db41e.png)
+
 ## Parameters
 
 Recently, I have created a "Param" class that acts as a value which is static, or can be dynamic.  This means that there is now the possibility of cell differentiation. The dynamic functions of parameters are usually infinite sets or repeating finite sets of numbers which represent future possible values of the parameter.  Parameters are now set up inside the DNA of each cell.  Each parameter has a "next" function which can be called for instance on bifurcation, or each cell step, etc., allowing every aspect of each cell to have some sort of progression over it's life span, controlling things like the cell's growth coeficient or it's initial placement.  Now parameters are part of the core functionality of the algorithm, allowing a function or set of functions to define the values of any aspect of growth over time.
 
 ## Features of GrowF Virtual Organisms
 
-* Parameter based oranism life arc design (designer DNA)
+* Parameter based organism life arc design (designer DNA)
 * Genetic Algorithm based design (organic DNA)
 * Namespaces give organisms a "Multiverse effect"
 * Evolution controlled cell nucleus Neural Networks (TBA)
 * Cell differentiation over time and space
+* All organisms are fully destructable (all parts/organs can be removed after growth)
+
+# Roadmap
+
+* Finish the color system
+* Finish the Hormones and Chemical messaging system
+* Finish coding the Genetic Algorithm for natural selection of organisms
+* Creation of GrowF Protocol
+* Create User Interface in Blender
+* Port python code to C++ and Javascript
+* Set up C++ API for GrowF so that it can run as a background process
+* Create Unity and Unreal Modules that use the C++ library
+* Create Javascript/HTML5 3D organism viewer
+* Begin project Artifice
+* Integration with Blockchains
+* NFT Minting directly from the UI in Blender or Unity
+* Create Protocols for minting GrowF organisms in-game for any game
 
 ## Hormones and Chemical Messaging between Cells
 
@@ -65,4 +93,8 @@ Part of why I started GrowF was inspired by the idea of the many metaverses that
 
 Living virtual organisms grown with GrowF are unique.  The 3D Models of their life progression can be included in games using Non-Fungible Tokens (NFTs).  If you can own any unique digital item, why not own a tree that you have bred, or trimmed, or simply that you found in a VR game somewhere.  Think about trimming, or when trees bear fruits that have specific properties or visual peculiarities.  Each branch of the tree can be removed, the fruits or leaves, (or whatever ends up growing on a bifurcation) can be separated from the tree, recorded as removed in the tree's history (affecting it's model forever).  Just like with real trees, the seeds in those fruits can be minted and given to friends or sold, reflecting the value that you have added to the tree by planting and growing it somewhere in the Metaverse.  It could end up seeding virtual forests, or being used as CG set pieces in movies or video games depending on who buys it from you.
 
+## So, You are a Crafter?
 
+![destructable](https://user-images.githubusercontent.com/1012779/146231113-7a7ecd6a-49ef-4843-8180-a4dd39cd13a2.png)
+
+Everything grown with GrowF has differentiated parts or organs that you can use seperately.  You can pick flowers, stems, leaves, or anything that grows for you, and use them as part of something else, or as a standalone mesh/model.
